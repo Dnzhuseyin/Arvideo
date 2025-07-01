@@ -197,20 +197,44 @@ class ArCameraActivity : ComponentActivity() {
                 )
                 
                 Text(
-                    text = "Hedef Resim: ${if (targetBitmap != null) "✓ Yüklendi" else "✗ Yüklenemedi"}",
+                    text = "Hedef Resim: ${if (targetBitmap != null) "✓ Yüklendi (${targetBitmap!!.width}x${targetBitmap!!.height})" else "✗ Yüklenemedi"}",
                     color = if (targetBitmap != null) androidx.compose.ui.graphics.Color.Green else androidx.compose.ui.graphics.Color.Red
                 )
                 
-                Button(
-                    onClick = { 
-                        if (isVideoPlaying) {
-                            stopVideo()
-                        } else {
-                            startVideo()
-                        }
-                    }
+                Text(
+                    text = "Video Durumu: ${if (isVideoPlaying) "▶️ Oynatılıyor" else "⏸️ Durduruldu"}",
+                    color = androidx.compose.ui.graphics.Color.White
+                )
+                
+                Spacer(modifier = Modifier.height(8.dp))
+                
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Text(if (isVideoPlaying) "Videoyu Durdur" else "Test Video Oynat")
+                    Button(
+                        onClick = { 
+                            if (isVideoPlaying) {
+                                stopVideo()
+                            } else {
+                                startVideo()
+                            }
+                        }
+                    ) {
+                        Text(if (isVideoPlaying) "Videoyu Durdur" else "Test Video Oynat")
+                    }
+                    
+                    Button(
+                        onClick = { 
+                            Log.d("ArCamera", "Manuel test: Hedef resim var mı? ${targetBitmap != null}")
+                            if (targetBitmap != null) {
+                                Log.d("ArCamera", "Hedef resim boyutu: ${targetBitmap!!.width}x${targetBitmap!!.height}")
+                            }
+                            detectionConfidence = 0.8f // Test için yüksek değer
+                            startVideo() // Zorla video başlat
+                        }
+                    ) {
+                        Text("Zorla Başlat")
+                    }
                 }
             }
         }
@@ -239,12 +263,17 @@ class ArCameraActivity : ComponentActivity() {
                     Log.d("ArCamera", "Benzerlik: $averageSimilarity (${(averageSimilarity * 100).toInt()}%)")
                     
                     // Eğer benzerlik %60'ın üzerindeyse video oynat
-                    if (averageSimilarity > 0.3f && !isVideoPlaying) {
-                        Log.d("ArCamera", "Video başlatılıyor!")
+                    if (averageSimilarity > 0.1f && !isVideoPlaying) {
+                        Log.d("ArCamera", "Video başlatılıyor! Benzerlik: $averageSimilarity")
                         startVideo()
-                    } else if (averageSimilarity <= 0.2f && isVideoPlaying) {
-                        Log.d("ArCamera", "Video durduruluyor!")
+                    } else if (averageSimilarity <= 0.05f && isVideoPlaying) {
+                        Log.d("ArCamera", "Video durduruluyor! Benzerlik: $averageSimilarity")
                         stopVideo()
+                    }
+                    
+                    // Her 30 frame'de bir detaylı log
+                    if (System.currentTimeMillis() % 1000 < 50) {
+                        Log.d("ArCamera", "Detaylı analiz - Pixel benzerlik: $similarity, Histogram benzerlik: $histogramSimilarity, Ortalama: $averageSimilarity")
                     }
                 } else {
                     Log.w("ArCamera", "Hedef fotoğraf yüklenmemiş, ML Kit kullanılıyor")
@@ -304,26 +333,52 @@ class ArCameraActivity : ComponentActivity() {
 
     private fun getExoPlayer(): ExoPlayer {
         if (exoPlayer == null) {
-            exoPlayer = ExoPlayer.Builder(this).build().apply {
-                // Raw klasöründen video dosyası yükle (varsayılan "ar_video.mp4")
-                val videoUri = Uri.parse("android.resource://$packageName/${R.raw.ar_video}")
+            try {
+                Log.d("ArCamera", "ExoPlayer oluşturuluyor...")
+                exoPlayer = ExoPlayer.Builder(this).build()
+                
+                // Video dosyasını yükle
+                val videoUri = Uri.parse("android.resource://$packageName/raw/ar_video")
+                Log.d("ArCamera", "Video URI: $videoUri")
+                
                 val mediaItem = MediaItem.fromUri(videoUri)
-                setMediaItem(mediaItem)
-                repeatMode = Player.REPEAT_MODE_ALL
-                prepare()
+                exoPlayer!!.setMediaItem(mediaItem)
+                exoPlayer!!.repeatMode = Player.REPEAT_MODE_ALL
+                exoPlayer!!.prepare()
+                
+                Log.d("ArCamera", "ExoPlayer hazır")
+            } catch (e: Exception) {
+                Log.e("ArCamera", "ExoPlayer oluşturma hatası", e)
+                Toast.makeText(this, "Video oynatıcı başlatılamadı: ${e.message}", Toast.LENGTH_LONG).show()
             }
         }
         return exoPlayer!!
     }
 
     private fun startVideo() {
-        isVideoPlaying = true
-        getExoPlayer().play()
+        try {
+            Log.d("ArCamera", "Video başlatılıyor...")
+            isVideoPlaying = true
+            val player = getExoPlayer()
+            player.playWhenReady = true
+            player.play()
+            Log.d("ArCamera", "Video başlatıldı")
+        } catch (e: Exception) {
+            Log.e("ArCamera", "Video başlatma hatası", e)
+            isVideoPlaying = false
+            Toast.makeText(this, "Video başlatılamadı: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
     }
 
     private fun stopVideo() {
-        isVideoPlaying = false
-        exoPlayer?.pause()
+        try {
+            Log.d("ArCamera", "Video durduruluyor...")
+            isVideoPlaying = false
+            exoPlayer?.pause()
+            Log.d("ArCamera", "Video durduruldu")
+        } catch (e: Exception) {
+            Log.e("ArCamera", "Video durdurma hatası", e)
+        }
     }
 
     override fun onDestroy() {

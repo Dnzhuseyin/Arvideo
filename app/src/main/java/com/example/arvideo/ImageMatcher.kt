@@ -9,8 +9,8 @@ import kotlin.math.sqrt
 class ImageMatcher {
     
     companion object {
-        private const val MATCH_THRESHOLD = 0.75f
-        private const val SAMPLE_SIZE = 50 // Performans için resmi küçültürüz
+        private const val MATCH_THRESHOLD = 0.1f  // Test için çok düşük eşik
+        private const val SAMPLE_SIZE = 30 // Daha küçük sample size - daha hızlı
     }
     
     /**

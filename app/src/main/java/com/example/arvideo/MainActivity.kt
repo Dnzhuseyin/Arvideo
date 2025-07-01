@@ -84,6 +84,21 @@ fun WelcomeScreen(modifier: Modifier = Modifier) {
         
         Spacer(modifier = Modifier.height(16.dp))
         
+        Button(
+            onClick = {
+                val intent = Intent(context, VideoTestActivity::class.java)
+                context.startActivity(intent)
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(56.dp)
+        ) {
+            Text(
+                text = "Video Test (Sadece Video)",
+                style = MaterialTheme.typography.titleMedium
+            )
+        }
+        
         Text(
             text = "Not: İlk kullanımda kamera izni vermeniz gerekecek",
             style = MaterialTheme.typography.bodySmall,

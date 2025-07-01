@@ -33,6 +33,11 @@
             android:exported="false"
             android:theme="@style/Theme.Arvideo"
             android:screenOrientation="portrait" />
+            
+        <activity
+            android:name=".VideoTestActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Arvideo" />
     </application>
 
 </manifest>
