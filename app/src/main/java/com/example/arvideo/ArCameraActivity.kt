@@ -251,6 +251,16 @@ class ArCameraActivity : ComponentActivity() {
                     color = androidx.compose.ui.graphics.Color.White
                 )
                 
+                Text(
+                    text = "Eşik: %10+ başlat, %5- durdur (ÇOK DÜŞÜK)",
+                    color = androidx.compose.ui.graphics.Color.Red
+                )
+                
+                Text(
+                    text = "OTOMATIK TEST: 5sn başlar, 8sn durur",
+                    color = androidx.compose.ui.graphics.Color.Magenta
+                )
+                
                 imagePosition?.let { pos ->
                     Text(
                         text = "Pozisyon: (${pos.x}, ${pos.y}) ${pos.width}x${pos.height}",
@@ -264,14 +274,14 @@ class ArCameraActivity : ComponentActivity() {
                 )
                 
                 Text(
-                    text = "Fırat Üniversitesi plaketini tam karşıya tutun",
+                    text = "Fırat Üniversitesi plaketini kameraya gösterin",
                     color = androidx.compose.ui.graphics.Color.Yellow
                 )
                 
                 Spacer(modifier = Modifier.height(8.dp))
                 
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     Button(
                         onClick = {
@@ -279,11 +289,30 @@ class ArCameraActivity : ComponentActivity() {
                             Log.d("ArCamera", "Image position: $imagePosition")
                             Log.d("ArCamera", "Video playing: $isVideoPlaying")
                             Log.d("ArCamera", "Detection confidence: $detectionConfidence")
-                            Log.d("ArCamera", "Video scale: $videoScale")
-                            Log.d("ArCamera", "Video offset: $videoOffsetX, $videoOffsetY")
+                            Log.d("ArCamera", "Target bitmap: ${targetBitmap != null}")
+                            Log.d("ArCamera", "Camera enabled: $cameraEnabled")
+                            if (targetBitmap != null) {
+                                Log.d("ArCamera", "Target size: ${targetBitmap!!.width}x${targetBitmap!!.height}")
+                            }
                         }
                     ) {
-                        Text("Debug")
+                        Text("Log")
+                    }
+                    
+                    Button(
+                        onClick = {
+                            if (isVideoPlaying) {
+                                stopVideo()
+                                imagePosition = null
+                            } else {
+                                // Test için zorla video başlat
+                                imagePosition = ImagePosition(100, 100, 300, 400, 0.9f)
+                                updateVideoPosition(imagePosition!!)
+                                startVideo()
+                            }
+                        }
+                    ) {
+                        Text(if (isVideoPlaying) "Stop" else "Test")
                     }
                     
                     Button(
@@ -306,37 +335,61 @@ class ArCameraActivity : ComponentActivity() {
         isProcessingImage = true
         
         try {
+            // OTOMATIK TEST - Eğer resim tanıma çalışmıyorsa
+            val currentTime = System.currentTimeMillis()
+            if (currentTime % 5000 < 100 && !isVideoPlaying) {
+                Log.d("ArCamera", "OTOMATIK TEST: 5 saniye - Video başlatılıyor!")
+                CoroutineScope(Dispatchers.Main).launch {
+                    imagePosition = ImagePosition(100, 100, 300, 400, 0.8f)
+                    updateVideoPosition(imagePosition!!)
+                    startVideo()
+                }
+            } else if (currentTime % 8000 < 100 && isVideoPlaying) {
+                Log.d("ArCamera", "OTOMATIK TEST: 8 saniye - Video durduruluyor!")
+                CoroutineScope(Dispatchers.Main).launch {
+                    stopVideo()
+                    imagePosition = null
+                }
+            }
+            
             if (targetBitmap != null) {
                 val bitmap = imageProxyToBitmap(imageProxy)
                 if (bitmap != null) {
-                    // Resmin pozisyonunu tespit et
-                    val position = findImagePosition(targetBitmap!!, bitmap)
+                    Log.d("ArCamera", "Processing frame: ${bitmap.width}x${bitmap.height}")
+                    
+                    // ÇOK BASİT YAKLAşIM: Sadece genel benzerlik
+                    val simpleSimilarity = calculateQuickSimilarity(targetBitmap!!, bitmap)
+                    
+                    Log.d("ArCamera", "Quick similarity: $simpleSimilarity")
                     
                     CoroutineScope(Dispatchers.Main).launch {
-                        if (position != null && position.confidence > 0.3f) {
-                            Log.d("ArCamera", "Resim tespit edildi: $position")
+                        detectionConfidence = simpleSimilarity
+                        
+                        // ÇOK DÜŞÜK EŞİK - %10!
+                        if (simpleSimilarity > 0.1f && !isVideoPlaying) {
+                            Log.d("ArCamera", "BASIT TANIMA: Video başlatılıyor! Similarity: $simpleSimilarity")
                             
-                            // AR pozisyonunu güncelle
-                            imagePosition = position
-                            detectionConfidence = position.confidence
-                            
-                            // Video pozisyonunu ayarla
-                            updateVideoPosition(position)
-                            
-                            // Video başlat (eğer başlamamışsa)
-                            if (!isVideoPlaying) {
-                                startVideo()
-                            }
-                        } else {
-                            // Resim bulunamadı
-                            detectionConfidence = position?.confidence ?: 0f
-                            if (isVideoPlaying && detectionConfidence < 0.2f) {
-                                stopVideo()
-                                imagePosition = null
-                            }
+                            // Sabit pozisyonda video göster
+                            imagePosition = ImagePosition(
+                                x = 100,
+                                y = 100, 
+                                width = 300,
+                                height = 400,
+                                confidence = simpleSimilarity
+                            )
+                            updateVideoPosition(imagePosition!!)
+                            startVideo()
+                        } else if (simpleSimilarity <= 0.05f && isVideoPlaying) {
+                            Log.d("ArCamera", "BASIT TANIMA: Video durduruluyor! Similarity: $simpleSimilarity")
+                            stopVideo()
+                            imagePosition = null
                         }
                     }
+                } else {
+                    Log.w("ArCamera", "Bitmap null!")
                 }
+            } else {
+                Log.w("ArCamera", "Target bitmap null!")
             }
         } catch (e: Exception) {
             Log.e("ArCamera", "AR processing hatası", e)
@@ -346,42 +399,46 @@ class ArCameraActivity : ComponentActivity() {
         }
     }
     
-    // Resmin kameradaki pozisyonunu bulma algoritması
-    private fun findImagePosition(target: Bitmap, source: Bitmap): ImagePosition? {
+    // Çok basit ve hızlı benzerlik hesaplama
+    private fun calculateQuickSimilarity(target: Bitmap, source: Bitmap): Float {
         return try {
-            val targetSmall = Bitmap.createScaledBitmap(target, 100, 100, true)
-            val sourceSmall = Bitmap.createScaledBitmap(source, 320, 240, true)
+            // Çok küçük boyutlarda karşılaştır - 10x10
+            val targetSmall = Bitmap.createScaledBitmap(target, 10, 10, true)
+            val sourceSmall = Bitmap.createScaledBitmap(source, 10, 10, true)
             
-            var bestMatch: ImagePosition? = null
-            var bestSimilarity = 0f
+            var totalSimilarity = 0f
+            val totalPixels = 100
             
-            // Sliding window ile resmi ara
-            val windowSize = 100
-            for (x in 0..(sourceSmall.width - windowSize)) {
-                for (y in 0..(sourceSmall.height - windowSize)) {
-                    val window = Bitmap.createBitmap(
-                        sourceSmall, x, y, windowSize, windowSize
-                    )
+            for (x in 0 until 10) {
+                for (y in 0 until 10) {
+                    val targetPixel = targetSmall.getPixel(x, y)
+                    val sourcePixel = sourceSmall.getPixel(x, y)
                     
-                    val similarity = calculateSimilarity(targetSmall, window)
+                    // Sadece gri ton karşılaştırması
+                    val targetGray = (android.graphics.Color.red(targetPixel) + 
+                                     android.graphics.Color.green(targetPixel) + 
+                                     android.graphics.Color.blue(targetPixel)) / 3
+                    val sourceGray = (android.graphics.Color.red(sourcePixel) + 
+                                     android.graphics.Color.green(sourcePixel) + 
+                                     android.graphics.Color.blue(sourcePixel)) / 3
                     
-                    if (similarity > bestSimilarity) {
-                        bestSimilarity = similarity
-                        bestMatch = ImagePosition(
-                            x = (x * source.width / sourceSmall.width),
-                            y = (y * source.height / sourceSmall.height),
-                            width = (windowSize * source.width / sourceSmall.width),
-                            height = (windowSize * source.height / sourceSmall.height),
-                            confidence = similarity
-                        )
-                    }
+                    val diff = kotlin.math.abs(targetGray - sourceGray)
+                    val similarity = 1f - (diff / 255f)
+                    totalSimilarity += similarity
                 }
             }
             
-            bestMatch
+            val result = (totalSimilarity / totalPixels).coerceIn(0f, 1f)
+            
+            // Her 50 frame'de bir log
+            if (System.currentTimeMillis() % 3000 < 100) {
+                Log.d("ArCamera", "Benzerlik hesaplanıyor: $result (${(result * 100).toInt()}%)")
+            }
+            
+            result
         } catch (e: Exception) {
-            Log.e("ArCamera", "Position finding hatası", e)
-            null
+            Log.e("ArCamera", "Quick similarity hatası", e)
+            0f
         }
     }
     
@@ -393,38 +450,6 @@ class ArCameraActivity : ComponentActivity() {
         videoScale = 1.2f // Video biraz büyük olsun
         
         Log.d("ArCamera", "Video pozisyonu güncellendi: offset($videoOffsetX, $videoOffsetY) scale($videoScale)")
-    }
-    
-    private fun calculateSimilarity(bitmap1: Bitmap, bitmap2: Bitmap): Float {
-        return try {
-            var totalSimilarity = 0f
-            val size = 50
-            val scaled1 = Bitmap.createScaledBitmap(bitmap1, size, size, true)
-            val scaled2 = Bitmap.createScaledBitmap(bitmap2, size, size, true)
-            
-            for (x in 0 until size) {
-                for (y in 0 until size) {
-                    val pixel1 = scaled1.getPixel(x, y)
-                    val pixel2 = scaled2.getPixel(x, y)
-                    
-                    val r1 = android.graphics.Color.red(pixel1)
-                    val g1 = android.graphics.Color.green(pixel1)
-                    val b1 = android.graphics.Color.blue(pixel1)
-                    
-                    val r2 = android.graphics.Color.red(pixel2)
-                    val g2 = android.graphics.Color.green(pixel2)
-                    val b2 = android.graphics.Color.blue(pixel2)
-                    
-                    val diff = abs(r1 - r2) + abs(g1 - g2) + abs(b1 - b2)
-                    val similarity = 1f - (diff / (255f * 3f))
-                    totalSimilarity += similarity
-                }
-            }
-            
-            totalSimilarity / (size * size)
-        } catch (e: Exception) {
-            0f
-        }
     }
     
     private fun imageProxyToBitmap(imageProxy: ImageProxy): Bitmap? {
