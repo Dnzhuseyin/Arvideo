@@ -7,6 +7,7 @@ import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Bundle
 import android.util.Log
+import android.view.ViewGroup
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -29,7 +30,9 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.PlayerView
 import com.example.arvideo.ui.theme.ArvideoTheme
+import kotlinx.coroutines.*
 import java.io.IOException
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -40,9 +43,9 @@ class ArCameraActivity : ComponentActivity() {
     private var targetBitmap: Bitmap? = null
     private var isVideoPlaying by mutableStateOf(false)
     private var detectionConfidence by mutableStateOf(0f)
-    private var testCounter by mutableStateOf(0)
     private var cameraEnabled by mutableStateOf(false)
     private lateinit var cameraExecutor: ExecutorService
+    private var isProcessingImage = false
 
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -76,7 +79,7 @@ class ArCameraActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    ArTestScreen()
+                    ArScreen()
                 }
             }
         }
@@ -122,6 +125,7 @@ class ArCameraActivity : ComponentActivity() {
                 
                 val mediaItem = MediaItem.fromUri(videoUri)
                 exoPlayer!!.setMediaItem(mediaItem)
+                exoPlayer!!.repeatMode = androidx.media3.common.Player.REPEAT_MODE_ALL
                 exoPlayer!!.prepare()
                 
                 Log.d("ArCamera", "Player hazır")
@@ -135,7 +139,7 @@ class ArCameraActivity : ComponentActivity() {
     }
 
     @Composable
-    fun ArTestScreen() {
+    fun ArScreen() {
         val context = LocalContext.current
         val lifecycleOwner = LocalLifecycleOwner.current
         
@@ -160,15 +164,26 @@ class ArCameraActivity : ComponentActivity() {
                                 .also {
                                     it.setSurfaceProvider(previewView.surfaceProvider)
                                 }
+                            
+                            // Image analysis ekliyoruz - ama çok dikkatli
+                            val imageAnalyzer = ImageAnalysis.Builder()
+                                .setTargetResolution(android.util.Size(640, 480))
+                                .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                                .build()
+                                .also {
+                                    it.setAnalyzer(cameraExecutor) { imageProxy ->
+                                        processImageSafely(imageProxy)
+                                    }
+                                }
 
                             val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
 
                             cameraProvider.unbindAll()
                             cameraProvider.bindToLifecycle(
-                                lifecycleOwner, cameraSelector, preview
+                                lifecycleOwner, cameraSelector, preview, imageAnalyzer
                             )
                             
-                            Log.d("ArCamera", "Kamera başarıyla başlatıldı")
+                            Log.d("ArCamera", "Kamera ve image analysis başarıyla başlatıldı")
                             
                         } catch (exc: Exception) {
                             Log.e("ArCamera", "Kamera başlatma hatası", exc)
@@ -189,6 +204,26 @@ class ArCameraActivity : ComponentActivity() {
                 }
             }
             
+            // Video Overlay - resim tanındığında gösterilecek
+            if (isVideoPlaying) {
+                AndroidView(
+                    factory = { ctx ->
+                        PlayerView(ctx).apply {
+                            player = exoPlayer
+                            useController = false
+                            layoutParams = ViewGroup.LayoutParams(
+                                ViewGroup.LayoutParams.MATCH_PARENT,
+                                600
+                            )
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(400.dp)
+                        .align(Alignment.Center)
+                )
+            }
+            
             // UI kontrolleri
             Column(
                 modifier = Modifier
@@ -206,8 +241,18 @@ class ArCameraActivity : ComponentActivity() {
                 )
                 
                 Text(
-                    text = "Video: ${if (isVideoPlaying) "▶️ Oynatılıyor" else "⏸️ Durduruldu"}",
+                    text = "Güven: ${(detectionConfidence * 100).toInt()}%",
                     color = androidx.compose.ui.graphics.Color.White
+                )
+                
+                Text(
+                    text = "Video: ${if (isVideoPlaying) "▶️ Oynatılıyor" else "⏸️ Durduruldu"}",
+                    color = if (isVideoPlaying) androidx.compose.ui.graphics.Color.Green else androidx.compose.ui.graphics.Color.White
+                )
+                
+                Text(
+                    text = "Fırat Üniversitesi plaketini kameraya gösterin",
+                    color = androidx.compose.ui.graphics.Color.Yellow
                 )
                 
                 Spacer(modifier = Modifier.height(8.dp))
@@ -220,19 +265,7 @@ class ArCameraActivity : ComponentActivity() {
                             if (isVideoPlaying) stopVideo() else startVideo()
                         }
                     ) {
-                        Text(if (isVideoPlaying) "Durdur" else "Video")
-                    }
-                    
-                    Button(
-                        onClick = {
-                            if (!cameraEnabled) {
-                                requestPermissionLauncher.launch(Manifest.permission.CAMERA)
-                            } else {
-                                Toast.makeText(context, "Kamera zaten aktif", Toast.LENGTH_SHORT).show()
-                            }
-                        }
-                    ) {
-                        Text("Kamera")
+                        Text(if (isVideoPlaying) "Durdur" else "Test Video")
                     }
                     
                     Button(
@@ -244,6 +277,94 @@ class ArCameraActivity : ComponentActivity() {
                     }
                 }
             }
+        }
+    }
+
+    // Güvenli image processing - channel broken önlemek için
+    private fun processImageSafely(imageProxy: ImageProxy) {
+        // Eğer hala işleme devam ediyorsa, bu frame'i atla
+        if (isProcessingImage) {
+            imageProxy.close()
+            return
+        }
+        
+        isProcessingImage = true
+        
+        try {
+            if (targetBitmap != null) {
+                val bitmap = imageProxyToBitmap(imageProxy)
+                if (bitmap != null) {
+                    // Basit renk karşılaştırması
+                    val similarity = calculateSimpleSimilarity(targetBitmap!!, bitmap)
+                    
+                    // UI thread'de güncelle
+                    CoroutineScope(Dispatchers.Main).launch {
+                        detectionConfidence = similarity
+                        
+                        // Eşik %40 - Fırat Üniversitesi plaketi için
+                        if (similarity > 0.4f && !isVideoPlaying) {
+                            Log.d("ArCamera", "Plakat tanındı! Video başlatılıyor. Benzerlik: $similarity")
+                            startVideo()
+                        } else if (similarity <= 0.25f && isVideoPlaying) {
+                            Log.d("ArCamera", "Plakat kayboldu. Video durduruluyor. Benzerlik: $similarity")
+                            stopVideo()
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("ArCamera", "Image processing hatası", e)
+        } finally {
+            isProcessingImage = false
+            imageProxy.close()
+        }
+    }
+    
+    // Basit ve hızlı bitmap dönüştürme
+    private fun imageProxyToBitmap(imageProxy: ImageProxy): Bitmap? {
+        return try {
+            val buffer = imageProxy.planes[0].buffer
+            val bytes = ByteArray(buffer.remaining())
+            buffer.get(bytes)
+            BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+        } catch (e: Exception) {
+            Log.e("ArCamera", "Bitmap dönüştürme hatası", e)
+            null
+        }
+    }
+    
+    // Basit renk benzerliği - performanslı
+    private fun calculateSimpleSimilarity(target: Bitmap, source: Bitmap): Float {
+        return try {
+            // 20x20 küçük sample
+            val targetSmall = Bitmap.createScaledBitmap(target, 20, 20, true)
+            val sourceSmall = Bitmap.createScaledBitmap(source, 20, 20, true)
+            
+            var totalSimilarity = 0f
+            val totalPixels = 400 // 20x20
+            
+            for (x in 0 until 20) {
+                for (y in 0 until 20) {
+                    val targetPixel = targetSmall.getPixel(x, y)
+                    val sourcePixel = sourceSmall.getPixel(x, y)
+                    
+                    val targetGray = (android.graphics.Color.red(targetPixel) + 
+                                     android.graphics.Color.green(targetPixel) + 
+                                     android.graphics.Color.blue(targetPixel)) / 3
+                    val sourceGray = (android.graphics.Color.red(sourcePixel) + 
+                                     android.graphics.Color.green(sourcePixel) + 
+                                     android.graphics.Color.blue(sourcePixel)) / 3
+                    
+                    val diff = kotlin.math.abs(targetGray - sourceGray)
+                    val similarity = 1f - (diff / 255f)
+                    totalSimilarity += similarity
+                }
+            }
+            
+            (totalSimilarity / totalPixels).coerceIn(0f, 1f)
+        } catch (e: Exception) {
+            Log.e("ArCamera", "Similarity hesaplama hatası", e)
+            0f
         }
     }
 
