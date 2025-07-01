@@ -3,6 +3,7 @@ package com.example.arvideo
 import android.Manifest
 import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
+import android.graphics.ImageFormat
 import android.net.Uri
 import android.opengl.GLES20
 import android.opengl.GLSurfaceView
@@ -46,6 +47,8 @@ class ARCoreActivity : ComponentActivity() {
     private var sessionState by mutableStateOf("INITIALIZING")
     private var hasPermission by mutableStateOf(false)
     private lateinit var cameraExecutor: ExecutorService
+    private var frameCounter = 0  // Frame sayacı ekle
+    private var currentSimilarity by mutableStateOf(0f)  // Anlık similarity
     
     // Tracked image pozisyon bilgileri
     private var imageX by mutableStateOf(0f)
@@ -322,7 +325,12 @@ class ARCoreActivity : ComponentActivity() {
                         )
                         
                         Text(
-                            text = "Fırat Üniv. plaketini gösterin (Eşik: %35)",
+                            text = "Similarity: ${(currentSimilarity * 100).toInt()}% (Eşik: 15%)",
+                            color = if (currentSimilarity > 0.15f) androidx.compose.ui.graphics.Color.Green else androidx.compose.ui.graphics.Color.Yellow
+                        )
+                        
+                        Text(
+                            text = "Fırat Üniv. plaketini gösterin",
                             color = androidx.compose.ui.graphics.Color.Yellow
                         )
                         
@@ -346,6 +354,16 @@ class ARCoreActivity : ComponentActivity() {
                             Log.d("ARCore", "Video playing: $isVideoPlaying")
                             Log.d("ARCore", "Has permission: $hasPermission")
                             Log.d("ARCore", "Image position: ($imageX, $imageY) ${imageWidth}x${imageHeight}")
+                            
+                            // Target image test
+                            try {
+                                val inputStream = assets.open("target_image.jpg")
+                                val targetBitmap = BitmapFactory.decodeStream(inputStream)
+                                inputStream.close()
+                                Log.d("ARCore", "Target image: ${targetBitmap?.width}x${targetBitmap?.height}")
+                            } catch (e: Exception) {
+                                Log.e("ARCore", "Target image yüklenemedi!", e)
+                            }
                         }
                     ) {
                         Text("Debug")
@@ -380,12 +398,17 @@ class ARCoreActivity : ComponentActivity() {
     // ARCore image tracking (background'da çalışır)
     private fun processARFrame(imageProxy: ImageProxy) {
         try {
+            // Performance için her 3. frame'i işle
+            frameCounter++
+            if (frameCounter % 3 != 0) {
+                imageProxy.close()
+                return
+            }
+            
             val session = arSession
             if (session != null && sessionState == "READY") {
-                // Gerçek image detection burada olacak
-                Log.d("ARCore", "Frame işleniyor... ${imageProxy.width}x${imageProxy.height}")
+                // Her frame'i işleme - sadece gerektiğinde
                 
-                // OTOMATIK TEST KALDIRILIYOR - Sadece gerçek resim tanıma
                 // Target image detection
                 val targetDetected = detectTargetImage(imageProxy)
                 
@@ -399,7 +422,7 @@ class ARCoreActivity : ComponentActivity() {
                             startVideo()
                         }
                     }
-                    Log.d("ARCore", "GERÇEK RESİM TANINDI! Video başlatılıyor...")
+                    Log.d("ARCore", "🟢 GERÇEK RESİM TANINDI! Video başlatılıyor...")
                 } else if (!targetDetected && trackingState == "TRACKING") {
                     runOnUiThread {
                         trackingState = "NONE"
@@ -408,7 +431,7 @@ class ARCoreActivity : ComponentActivity() {
                             stopVideo()
                         }
                     }
-                    Log.d("ARCore", "Resim kayboldu, video durduruluyor...")
+                    Log.d("ARCore", "🔴 Resim kayboldu, video durduruluyor...")
                 }
             }
         } catch (e: Exception) {
@@ -424,25 +447,36 @@ class ARCoreActivity : ComponentActivity() {
             // Target image yüklü mü kontrol et
             val targetBitmap = loadTargetBitmap()
             if (targetBitmap == null) {
+                Log.e("ARCore", "Target bitmap null!")
                 return false
             }
             
             // ImageProxy'yi bitmap'e çevir
             val currentBitmap = imageProxyToBitmap(imageProxy)
             if (currentBitmap == null) {
+                Log.e("ARCore", "Current bitmap null!")
                 return false
             }
             
             // Basit similarity hesaplama
             val similarity = calculateImageSimilarity(targetBitmap, currentBitmap)
             
-            // Her 2 saniyede bir log
-            if (System.currentTimeMillis() % 2000 < 100) {
-                Log.d("ARCore", "Image similarity: ${(similarity * 100).toInt()}%")
+            // UI state'ini güncelle
+            runOnUiThread {
+                currentSimilarity = similarity
             }
             
-            // Eşik değeri - %35'den fazla benzerlik varsa resim tanındı
-            return similarity > 0.35f
+            // Sürekli log - daha sık
+            Log.d("ARCore", "Image similarity: ${(similarity * 100).toInt()}% (Target: ${targetBitmap.width}x${targetBitmap.height}, Current: ${currentBitmap.width}x${currentBitmap.height})")
+            
+            // Eşik değeri - %15'e düşürüldü (daha hassas)
+            val detected = similarity > 0.15f
+            
+            if (detected) {
+                Log.d("ARCore", "🎯 RESİM TANINDI! Similarity: ${(similarity * 100).toInt()}%")
+            }
+            
+            return detected
             
         } catch (e: Exception) {
             Log.e("ARCore", "Image detection hatası", e)
@@ -464,27 +498,62 @@ class ARCoreActivity : ComponentActivity() {
     
     private fun imageProxyToBitmap(imageProxy: ImageProxy): android.graphics.Bitmap? {
         return try {
-            val buffer = imageProxy.planes[0].buffer
-            val bytes = ByteArray(buffer.remaining())
-            buffer.get(bytes)
-            BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+            // YUV_420_888 format'ı RGB'ye çevir
+            val image = imageProxy.image
+            if (image != null) {
+                val planes = image.planes
+                val yBuffer = planes[0].buffer
+                val uBuffer = planes[1].buffer  
+                val vBuffer = planes[2].buffer
+                
+                val ySize = yBuffer.remaining()
+                val uSize = uBuffer.remaining()
+                val vSize = vBuffer.remaining()
+                
+                val nv21 = ByteArray(ySize + uSize + vSize)
+                
+                yBuffer.get(nv21, 0, ySize)
+                vBuffer.get(nv21, ySize, vSize)
+                uBuffer.get(nv21, ySize + vSize, uSize)
+                
+                val yuvImage = android.graphics.YuvImage(nv21, android.graphics.ImageFormat.NV21, imageProxy.width, imageProxy.height, null)
+                val out = java.io.ByteArrayOutputStream()
+                yuvImage.compressToJpeg(android.graphics.Rect(0, 0, imageProxy.width, imageProxy.height), 100, out)
+                val imageBytes = out.toByteArray()
+                
+                val bitmap = BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
+                Log.d("ARCore", "Bitmap oluşturuldu: ${bitmap?.width}x${bitmap?.height}")
+                return bitmap
+            } else {
+                Log.e("ARCore", "ImageProxy.image null!")
+                return null
+            }
         } catch (e: Exception) {
             Log.e("ARCore", "ImageProxy bitmap dönüştürme hatası", e)
-            null
+            // Fallback - eski yöntem
+            try {
+                val buffer = imageProxy.planes[0].buffer
+                val bytes = ByteArray(buffer.remaining())
+                buffer.get(bytes)
+                return BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+            } catch (e2: Exception) {
+                Log.e("ARCore", "Fallback bitmap dönüştürme de başarısız", e2)
+                return null
+            }
         }
     }
     
     private fun calculateImageSimilarity(target: android.graphics.Bitmap, current: android.graphics.Bitmap): Float {
         return try {
-            // Her iki resmi de küçük boyuta getir - karşılaştırma için
-            val targetSmall = android.graphics.Bitmap.createScaledBitmap(target, 50, 50, true)
-            val currentSmall = android.graphics.Bitmap.createScaledBitmap(current, 50, 50, true)
+            // Her iki resmi de daha büyük boyuta getir - daha hassas karşılaştırma için
+            val targetSmall = android.graphics.Bitmap.createScaledBitmap(target, 80, 80, true)
+            val currentSmall = android.graphics.Bitmap.createScaledBitmap(current, 80, 80, true)
             
             var totalSimilarity = 0f
-            val totalPixels = 2500 // 50x50
+            var totalWeight = 0f
             
-            for (x in 0 until 50) {
-                for (y in 0 until 50) {
+            for (x in 0 until 80) {
+                for (y in 0 until 80) {
                     val targetPixel = targetSmall.getPixel(x, y)
                     val currentPixel = currentSmall.getPixel(x, y)
                     
@@ -502,14 +571,29 @@ class ARCoreActivity : ComponentActivity() {
                     
                     val totalDiff = (rDiff + gDiff + bDiff) / 3f
                     val similarity = 1f - (totalDiff / 255f)
-                    totalSimilarity += similarity
+                    
+                    // Merkez ağırlığı - ortadaki piksellere daha fazla önem ver
+                    val centerX = 40
+                    val centerY = 40
+                    val distanceFromCenter = kotlin.math.sqrt(((x - centerX) * (x - centerX) + (y - centerY) * (y - centerY)).toFloat())
+                    val weight = kotlin.math.max(1f, 3f - (distanceFromCenter / 20f)) // Merkez 3x, kenar 1x
+                    
+                    totalSimilarity += similarity * weight
+                    totalWeight += weight
                 }
             }
             
             targetSmall.recycle()
             currentSmall.recycle()
             
-            totalSimilarity / totalPixels
+            val result = totalSimilarity / totalWeight
+            
+            // Her 10 frame'de bir detaylı log
+            if (System.currentTimeMillis() % 1000 < 50) {
+                Log.d("ARCore", "Detaylı similarity: ${(result * 100).toInt()}% (Weighted center)")
+            }
+            
+            result
             
         } catch (e: Exception) {
             Log.e("ARCore", "Similarity hesaplama hatası", e)
