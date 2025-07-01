@@ -251,6 +251,16 @@ class ArCameraActivity : ComponentActivity() {
                 )
                 
                 Text(
+                    text = "Eşik: %15+ başlat, %10- durdur",
+                    color = androidx.compose.ui.graphics.Color.Cyan
+                )
+                
+                Text(
+                    text = "Test: 5sn video başlar, 8sn durur",
+                    color = androidx.compose.ui.graphics.Color.Magenta
+                )
+                
+                Text(
                     text = "Fırat Üniversitesi plaketini kameraya gösterin",
                     color = androidx.compose.ui.graphics.Color.Yellow
                 )
@@ -258,14 +268,31 @@ class ArCameraActivity : ComponentActivity() {
                 Spacer(modifier = Modifier.height(8.dp))
                 
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     Button(
                         onClick = {
                             if (isVideoPlaying) stopVideo() else startVideo()
                         }
                     ) {
-                        Text(if (isVideoPlaying) "Durdur" else "Test Video")
+                        Text(if (isVideoPlaying) "Durdur" else "Manuel")
+                    }
+                    
+                    Button(
+                        onClick = {
+                            Log.d("ArCamera", "=== DEBUG BİLGİLERİ ===")
+                            Log.d("ArCamera", "Target bitmap: ${targetBitmap != null}")
+                            Log.d("ArCamera", "Camera enabled: $cameraEnabled")
+                            Log.d("ArCamera", "Video playing: $isVideoPlaying")
+                            Log.d("ArCamera", "Detection confidence: $detectionConfidence")
+                            Log.d("ArCamera", "Is processing: $isProcessingImage")
+                            if (targetBitmap != null) {
+                                Log.d("ArCamera", "Target size: ${targetBitmap!!.width}x${targetBitmap!!.height}")
+                            }
+                            Toast.makeText(this@ArCameraActivity, "Debug logları gönderildi - Logcat'e bakın", Toast.LENGTH_LONG).show()
+                        }
+                    ) {
+                        Text("Debug")
                     }
                     
                     Button(
@@ -291,26 +318,51 @@ class ArCameraActivity : ComponentActivity() {
         isProcessingImage = true
         
         try {
+            // BASİT TEST: Her 5 saniyede otomatik video başlat (eğer resim tanıma çalışmıyorsa)
+            val currentTime = System.currentTimeMillis()
+            if (currentTime % 5000 < 100 && !isVideoPlaying) {
+                Log.d("ArCamera", "5 saniye test - Otomatik video başlatılıyor!")
+                CoroutineScope(Dispatchers.Main).launch {
+                    startVideo()
+                }
+            } else if (currentTime % 8000 < 100 && isVideoPlaying) {
+                Log.d("ArCamera", "8 saniye test - Otomatik video durduruluyor!")
+                CoroutineScope(Dispatchers.Main).launch {
+                    stopVideo()
+                }
+            }
+            
             if (targetBitmap != null) {
                 val bitmap = imageProxyToBitmap(imageProxy)
                 if (bitmap != null) {
+                    Log.d("ArCamera", "Bitmap oluşturuldu: ${bitmap.width}x${bitmap.height}")
+                    
                     // Basit renk karşılaştırması
                     val similarity = calculateSimpleSimilarity(targetBitmap!!, bitmap)
+                    
+                    // Her 30 frame'de bir detaylı log
+                    if (System.currentTimeMillis() % 1000 < 50) {
+                        Log.d("ArCamera", "Similarity check: $similarity (${(similarity * 100).toInt()}%)")
+                    }
                     
                     // UI thread'de güncelle
                     CoroutineScope(Dispatchers.Main).launch {
                         detectionConfidence = similarity
                         
-                        // Eşik %40 - Fırat Üniversitesi plaketi için
-                        if (similarity > 0.4f && !isVideoPlaying) {
-                            Log.d("ArCamera", "Plakat tanındı! Video başlatılıyor. Benzerlik: $similarity")
+                        // ÇOK DÜŞÜK EŞİK - TEST İÇİN %15
+                        if (similarity > 0.15f && !isVideoPlaying) {
+                            Log.d("ArCamera", "DÜŞÜK EŞİK: Plakat tanındı! Video başlatılıyor. Benzerlik: $similarity")
                             startVideo()
-                        } else if (similarity <= 0.25f && isVideoPlaying) {
-                            Log.d("ArCamera", "Plakat kayboldu. Video durduruluyor. Benzerlik: $similarity")
+                        } else if (similarity <= 0.10f && isVideoPlaying) {
+                            Log.d("ArCamera", "DÜŞÜK EŞİK: Plakat kayboldu. Video durduruluyor. Benzerlik: $similarity")
                             stopVideo()
                         }
                     }
+                } else {
+                    Log.w("ArCamera", "Bitmap oluşturulamadı!")
                 }
+            } else {
+                Log.w("ArCamera", "Target bitmap NULL!")
             }
         } catch (e: Exception) {
             Log.e("ArCamera", "Image processing hatası", e)
@@ -323,10 +375,60 @@ class ArCameraActivity : ComponentActivity() {
     // Basit ve hızlı bitmap dönüştürme
     private fun imageProxyToBitmap(imageProxy: ImageProxy): Bitmap? {
         return try {
+            // Önce JPEG decode etmeyi dene
             val buffer = imageProxy.planes[0].buffer
             val bytes = ByteArray(buffer.remaining())
             buffer.get(bytes)
-            BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+            
+            val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+            if (bitmap != null) {
+                Log.d("ArCamera", "JPEG decode başarılı: ${bitmap.width}x${bitmap.height}")
+                return bitmap
+            }
+            
+            // JPEG çalışmazsa YUV formatını dene
+            Log.d("ArCamera", "JPEG başarısız, YUV deneniyor...")
+            
+            val yBuffer = imageProxy.planes[0].buffer
+            val uBuffer = imageProxy.planes[1].buffer
+            val vBuffer = imageProxy.planes[2].buffer
+
+            val ySize = yBuffer.remaining()
+            val uSize = uBuffer.remaining()
+            val vSize = vBuffer.remaining()
+
+            val nv21 = ByteArray(ySize + uSize + vSize)
+
+            yBuffer.get(nv21, 0, ySize)
+            uBuffer.get(nv21, ySize, uSize) 
+            vBuffer.get(nv21, ySize + uSize, vSize)
+
+            val yuvImage = android.graphics.YuvImage(
+                nv21, 
+                android.graphics.ImageFormat.NV21, 
+                imageProxy.width, 
+                imageProxy.height, 
+                null
+            )
+
+            val out = java.io.ByteArrayOutputStream()
+            yuvImage.compressToJpeg(
+                android.graphics.Rect(0, 0, imageProxy.width, imageProxy.height), 
+                75, 
+                out
+            )
+
+            val jpegBytes = out.toByteArray()
+            val resultBitmap = BitmapFactory.decodeByteArray(jpegBytes, 0, jpegBytes.size)
+            
+            if (resultBitmap != null) {
+                Log.d("ArCamera", "YUV decode başarılı: ${resultBitmap.width}x${resultBitmap.height}")
+            } else {
+                Log.e("ArCamera", "YUV decode de başarısız!")
+            }
+            
+            resultBitmap
+            
         } catch (e: Exception) {
             Log.e("ArCamera", "Bitmap dönüştürme hatası", e)
             null
@@ -342,6 +444,10 @@ class ArCameraActivity : ComponentActivity() {
             
             var totalSimilarity = 0f
             val totalPixels = 400 // 20x20
+            
+            // İlk pixel'leri kontrol et - debug için
+            val targetFirstPixel = targetSmall.getPixel(0, 0)
+            val sourceFirstPixel = sourceSmall.getPixel(0, 0)
             
             for (x in 0 until 20) {
                 for (y in 0 until 20) {
@@ -361,7 +467,17 @@ class ArCameraActivity : ComponentActivity() {
                 }
             }
             
-            (totalSimilarity / totalPixels).coerceIn(0f, 1f)
+            val result = (totalSimilarity / totalPixels).coerceIn(0f, 1f)
+            
+            // Her 50 hesaplamada bir detaylı log
+            if (System.currentTimeMillis() % 5000 < 100) {
+                Log.d("ArCamera", "=== SİMİLARİTY DETAY ===")
+                Log.d("ArCamera", "Target first pixel: R=${android.graphics.Color.red(targetFirstPixel)} G=${android.graphics.Color.green(targetFirstPixel)} B=${android.graphics.Color.blue(targetFirstPixel)}")
+                Log.d("ArCamera", "Source first pixel: R=${android.graphics.Color.red(sourceFirstPixel)} G=${android.graphics.Color.green(sourceFirstPixel)} B=${android.graphics.Color.blue(sourceFirstPixel)}")
+                Log.d("ArCamera", "Final similarity: $result (${(result * 100).toInt()}%)")
+            }
+            
+            result
         } catch (e: Exception) {
             Log.e("ArCamera", "Similarity hesaplama hatası", e)
             0f
