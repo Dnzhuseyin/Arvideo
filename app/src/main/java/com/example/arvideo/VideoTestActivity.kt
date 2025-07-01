@@ -118,24 +118,21 @@ class VideoTestActivity : ComponentActivity() {
                 Log.d("VideoTest", "ExoPlayer oluşturuluyor...")
                 exoPlayer = ExoPlayer.Builder(this).build()
                 
-                // Farklı URI formatlarını dene
-                val videoUris = listOf(
-                    "android.resource://$packageName/raw/ar_video",
-                    "android.resource://$packageName/${R.raw.ar_video}",
-                    "android.resource://$packageName/raw/ar_video.mp4"
-                )
+                // Resource ID ile doğru URI oluştur
+                val resourceId = resources.getIdentifier("ar_video", "raw", packageName)
+                Log.d("VideoTest", "Resource ID: $resourceId")
                 
-                for (uri in videoUris) {
-                    try {
-                        Log.d("VideoTest", "Denenen URI: $uri")
-                        val mediaItem = MediaItem.fromUri(Uri.parse(uri))
-                        exoPlayer!!.setMediaItem(mediaItem)
-                        exoPlayer!!.prepare()
-                        Log.d("VideoTest", "Video başarıyla yüklendi: $uri")
-                        break
-                    } catch (e: Exception) {
-                        Log.w("VideoTest", "URI başarısız: $uri - ${e.message}")
-                    }
+                if (resourceId != 0) {
+                    val videoUri = Uri.parse("android.resource://$packageName/$resourceId")
+                    Log.d("VideoTest", "Video URI: $videoUri")
+                    
+                    val mediaItem = MediaItem.fromUri(videoUri)
+                    exoPlayer!!.setMediaItem(mediaItem)
+                    exoPlayer!!.prepare()
+                    Log.d("VideoTest", "Video başarıyla yüklendi")
+                } else {
+                    Log.e("VideoTest", "Video resource bulunamadı!")
+                    Toast.makeText(this, "Video dosyası bulunamadı!", Toast.LENGTH_LONG).show()
                 }
                 
                 exoPlayer!!.repeatMode = Player.REPEAT_MODE_ALL
