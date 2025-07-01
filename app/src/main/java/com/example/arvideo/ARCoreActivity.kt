@@ -317,7 +317,12 @@ class ARCoreActivity : ComponentActivity() {
                         )
                         
                         Text(
-                            text = "Fırat Üniversitesi plaketini gösterin",
+                            text = "🎯 GERÇEK RESİM TANIMA AKTİF",
+                            color = androidx.compose.ui.graphics.Color.Green
+                        )
+                        
+                        Text(
+                            text = "Fırat Üniv. plaketini gösterin (Eşik: %35)",
                             color = androidx.compose.ui.graphics.Color.Yellow
                         )
                         
@@ -377,39 +382,138 @@ class ARCoreActivity : ComponentActivity() {
         try {
             val session = arSession
             if (session != null && sessionState == "READY") {
-                // Burada ARCore frame tracking yapılabilir
-                // Şimdilik basit test
+                // Gerçek image detection burada olacak
                 Log.d("ARCore", "Frame işleniyor... ${imageProxy.width}x${imageProxy.height}")
                 
-                // Simulated tracking - gerçek ARCore implementation buraya gelecek
-                if (System.currentTimeMillis() % 10000 < 5000) { // 10 saniyede 5 saniye tracking
-                    if (trackingState != "TRACKING") {
-                        runOnUiThread {
-                            trackingState = "TRACKING"
-                            trackedImageName = "firat_plaketi"
-                            imageX = 100f
-                            imageY = 200f
-                            if (!isVideoPlaying) {
-                                startVideo()
-                            }
+                // OTOMATIK TEST KALDIRILIYOR - Sadece gerçek resim tanıma
+                // Target image detection
+                val targetDetected = detectTargetImage(imageProxy)
+                
+                if (targetDetected && trackingState != "TRACKING") {
+                    runOnUiThread {
+                        trackingState = "TRACKING"
+                        trackedImageName = "firat_plaketi"
+                        imageX = 100f
+                        imageY = 200f
+                        if (!isVideoPlaying) {
+                            startVideo()
                         }
                     }
-                } else {
-                    if (trackingState == "TRACKING") {
-                        runOnUiThread {
-                            trackingState = "NONE"
-                            trackedImageName = ""
-                            if (isVideoPlaying) {
-                                stopVideo()
-                            }
+                    Log.d("ARCore", "GERÇEK RESİM TANINDI! Video başlatılıyor...")
+                } else if (!targetDetected && trackingState == "TRACKING") {
+                    runOnUiThread {
+                        trackingState = "NONE"
+                        trackedImageName = ""
+                        if (isVideoPlaying) {
+                            stopVideo()
                         }
                     }
+                    Log.d("ARCore", "Resim kayboldu, video durduruluyor...")
                 }
             }
         } catch (e: Exception) {
             Log.e("ARCore", "Frame işleme hatası", e)
         } finally {
             imageProxy.close()
+        }
+    }
+    
+    // Basit target image detection
+    private fun detectTargetImage(imageProxy: ImageProxy): Boolean {
+        return try {
+            // Target image yüklü mü kontrol et
+            val targetBitmap = loadTargetBitmap()
+            if (targetBitmap == null) {
+                return false
+            }
+            
+            // ImageProxy'yi bitmap'e çevir
+            val currentBitmap = imageProxyToBitmap(imageProxy)
+            if (currentBitmap == null) {
+                return false
+            }
+            
+            // Basit similarity hesaplama
+            val similarity = calculateImageSimilarity(targetBitmap, currentBitmap)
+            
+            // Her 2 saniyede bir log
+            if (System.currentTimeMillis() % 2000 < 100) {
+                Log.d("ARCore", "Image similarity: ${(similarity * 100).toInt()}%")
+            }
+            
+            // Eşik değeri - %35'den fazla benzerlik varsa resim tanındı
+            return similarity > 0.35f
+            
+        } catch (e: Exception) {
+            Log.e("ARCore", "Image detection hatası", e)
+            false
+        }
+    }
+    
+    private fun loadTargetBitmap(): android.graphics.Bitmap? {
+        return try {
+            val inputStream = assets.open("target_image.jpg")
+            val bitmap = BitmapFactory.decodeStream(inputStream)
+            inputStream.close()
+            bitmap
+        } catch (e: Exception) {
+            Log.e("ARCore", "Target image yüklenemedi", e)
+            null
+        }
+    }
+    
+    private fun imageProxyToBitmap(imageProxy: ImageProxy): android.graphics.Bitmap? {
+        return try {
+            val buffer = imageProxy.planes[0].buffer
+            val bytes = ByteArray(buffer.remaining())
+            buffer.get(bytes)
+            BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+        } catch (e: Exception) {
+            Log.e("ARCore", "ImageProxy bitmap dönüştürme hatası", e)
+            null
+        }
+    }
+    
+    private fun calculateImageSimilarity(target: android.graphics.Bitmap, current: android.graphics.Bitmap): Float {
+        return try {
+            // Her iki resmi de küçük boyuta getir - karşılaştırma için
+            val targetSmall = android.graphics.Bitmap.createScaledBitmap(target, 50, 50, true)
+            val currentSmall = android.graphics.Bitmap.createScaledBitmap(current, 50, 50, true)
+            
+            var totalSimilarity = 0f
+            val totalPixels = 2500 // 50x50
+            
+            for (x in 0 until 50) {
+                for (y in 0 until 50) {
+                    val targetPixel = targetSmall.getPixel(x, y)
+                    val currentPixel = currentSmall.getPixel(x, y)
+                    
+                    val targetR = android.graphics.Color.red(targetPixel)
+                    val targetG = android.graphics.Color.green(targetPixel)
+                    val targetB = android.graphics.Color.blue(targetPixel)
+                    
+                    val currentR = android.graphics.Color.red(currentPixel)
+                    val currentG = android.graphics.Color.green(currentPixel)
+                    val currentB = android.graphics.Color.blue(currentPixel)
+                    
+                    val rDiff = kotlin.math.abs(targetR - currentR)
+                    val gDiff = kotlin.math.abs(targetG - currentG)
+                    val bDiff = kotlin.math.abs(targetB - currentB)
+                    
+                    val totalDiff = (rDiff + gDiff + bDiff) / 3f
+                    val similarity = 1f - (totalDiff / 255f)
+                    totalSimilarity += similarity
+                }
+            }
+            
+            targetSmall.recycle()
+            currentSmall.recycle()
+            
+            totalSimilarity / totalPixels
+            
+        } catch (e: Exception) {
+            Log.e("ARCore", "Similarity hesaplama hatası", e)
+            0f
         }
     }
     
