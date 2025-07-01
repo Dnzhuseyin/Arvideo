@@ -50,10 +50,8 @@ dependencies {
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
 
-    // ARCore - Google's AR SDK
+    // ARCore - Google's AR SDK (sadece core, SceneForm kaldırıldı)
     implementation("com.google.ar:core:1.41.0")
-    implementation("com.google.ar.sceneform:core:1.17.1")
-    implementation("com.google.ar.sceneform.ux:sceneform-ux:1.17.1")
 
     // CameraX
     implementation("androidx.camera:camera-core:1.3.1")
@@ -74,6 +72,7 @@ dependencies {
 
     // Image loading
     implementation("io.coil-kt:coil-compose:2.5.0")
+    
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)

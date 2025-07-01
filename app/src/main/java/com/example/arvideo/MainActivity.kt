@@ -31,102 +31,104 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+}
 
-    @Composable
-    fun MainScreen() {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.Center,
-            horizontalAlignment = Alignment.CenterHorizontally
+@Composable
+fun MainScreen() {
+    val context = LocalContext.current
+    
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(
+            text = "AR Video Uygulaması",
+            style = MaterialTheme.typography.headlineMedium
+        )
+        
+        Spacer(modifier = Modifier.height(32.dp))
+        
+        // Fırat Üniversitesi videosu için olan buton
+        Button(
+            onClick = {
+                val intent = Intent(context, SimpleVideoActivity::class.java)
+                context.startActivity(intent)
+            },
+            modifier = Modifier.fillMaxWidth()
         ) {
-            Text(
-                text = "AR Video Uygulaması",
-                style = MaterialTheme.typography.headlineMedium
+            Text("Basit Video Test")
+        }
+        
+        Spacer(modifier = Modifier.height(16.dp))
+        
+        Button(
+            onClick = {
+                val intent = Intent(context, VideoTestActivity::class.java)
+                context.startActivity(intent)
+            },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("Video Dosyası Test")
+        }
+        
+        Spacer(modifier = Modifier.height(16.dp))
+        
+        Button(
+            onClick = {
+                val intent = Intent(context, ArCameraActivity::class.java)
+                context.startActivity(intent)
+            },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("Custom AR Kamera (Eski)")
+        }
+        
+        Spacer(modifier = Modifier.height(16.dp))
+        
+        // ARCore - Professional version
+        Card(
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.primaryContainer
             )
-            
-            Spacer(modifier = Modifier.height(32.dp))
-            
-            // Fırat Üniversitesi videosu için olan buton
-            Button(
-                onClick = {
-                    val intent = Intent(this@MainActivity, SimpleVideoActivity::class.java)
-                    startActivity(intent)
-                },
-                modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp)
             ) {
-                Text("Basit Video Test")
-            }
-            
-            Spacer(modifier = Modifier.height(16.dp))
-            
-            Button(
-                onClick = {
-                    val intent = Intent(this@MainActivity, VideoTestActivity::class.java)
-                    startActivity(intent)
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("Video Dosyası Test")
-            }
-            
-            Spacer(modifier = Modifier.height(16.dp))
-            
-            Button(
-                onClick = {
-                    val intent = Intent(this@MainActivity, ArCameraActivity::class.java)
-                    startActivity(intent)
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("Custom AR Kamera (Eski)")
-            }
-            
-            Spacer(modifier = Modifier.height(16.dp))
-            
-            // ARCore - Professional version
-            Card(
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer
+                Text(
+                    text = "🚀 PROFESSIONAL ARCore",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.primary
                 )
-            ) {
-                Column(
-                    modifier = Modifier.padding(16.dp)
+                
+                Text(
+                    text = "Google ARCore ile gerçek AR deneyimi",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                
+                Spacer(modifier = Modifier.height(8.dp))
+                
+                Button(
+                    onClick = {
+                        val intent = Intent(context, ARCoreActivity::class.java)
+                        context.startActivity(intent)
+                    },
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text(
-                        text = "🚀 PROFESSIONAL ARCore",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                    
-                    Text(
-                        text = "Google ARCore ile gerçek AR deneyimi",
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                    
-                    Spacer(modifier = Modifier.height(8.dp))
-                    
-                    Button(
-                        onClick = {
-                            val intent = Intent(this@MainActivity, ARCoreActivity::class.java)
-                            startActivity(intent)
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("ARCore AR Kamera")
-                    }
+                    Text("ARCore AR Kamera")
                 }
             }
-            
-            Spacer(modifier = Modifier.height(24.dp))
-            
-            Text(
-                text = "Fırat Üniversitesi plaketi ile video oynatılacak",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
         }
+        
+        Spacer(modifier = Modifier.height(24.dp))
+        
+        Text(
+            text = "Fırat Üniversitesi plaketi ile video oynatılacak",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
 
