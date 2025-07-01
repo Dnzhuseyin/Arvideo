@@ -38,6 +38,11 @@
             android:name=".VideoTestActivity"
             android:exported="false"
             android:theme="@style/Theme.Arvideo" />
+            
+        <activity
+            android:name=".SimpleVideoActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Arvideo" />
     </application>
 
 </manifest>

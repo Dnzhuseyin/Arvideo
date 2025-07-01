@@ -86,6 +86,23 @@ fun WelcomeScreen(modifier: Modifier = Modifier) {
         
         Button(
             onClick = {
+                val intent = Intent(context, SimpleVideoActivity::class.java)
+                context.startActivity(intent)
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(56.dp)
+        ) {
+            Text(
+                text = "Basit Video Test (Kamerasız)",
+                style = MaterialTheme.typography.titleMedium
+            )
+        }
+        
+        Spacer(modifier = Modifier.height(16.dp))
+        
+        Button(
+            onClick = {
                 val intent = Intent(context, VideoTestActivity::class.java)
                 context.startActivity(intent)
             },
@@ -94,7 +111,7 @@ fun WelcomeScreen(modifier: Modifier = Modifier) {
                 .height(56.dp)
         ) {
             Text(
-                text = "Video Test (Sadece Video)",
+                text = "Video Test (Eski)",
                 style = MaterialTheme.typography.titleMedium
             )
         }
