@@ -63,6 +63,8 @@ class ArCameraActivity : ComponentActivity() {
     private var videoOffsetX by mutableStateOf(0.dp)
     private var videoOffsetY by mutableStateOf(0.dp)
     private var videoScale by mutableStateOf(1f)
+    private var videoWidth by mutableStateOf(200.dp)
+    private var videoHeight by mutableStateOf(200.dp)
 
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -217,16 +219,12 @@ class ArCameraActivity : ComponentActivity() {
                         PlayerView(ctx).apply {
                             player = exoPlayer
                             useController = false
-                            layoutParams = ViewGroup.LayoutParams(
-                                ViewGroup.LayoutParams.MATCH_PARENT,
-                                ViewGroup.LayoutParams.MATCH_PARENT
-                            )
                         }
                     },
                     modifier = Modifier
                         .size(
-                            width = (imagePosition!!.width / 2).dp,  // Resmin tam boyutu
-                            height = (imagePosition!!.height / 2).dp
+                            width = videoWidth,   // Dinamik boyut
+                            height = videoHeight  // Dinamik boyut
                         )
                         .offset(
                             x = videoOffsetX,
@@ -252,8 +250,13 @@ class ArCameraActivity : ComponentActivity() {
                 )
                 
                 Text(
-                    text = "Eşik: %20+ başlat, %15- durdur (GELİŞMİŞ)",
-                    color = androidx.compose.ui.graphics.Color.Green
+                    text = "Eşik: %40+ başlat, %25- durdur (YÜKSEK HASSAS)",
+                    color = androidx.compose.ui.graphics.Color.Red
+                )
+                
+                Text(
+                    text = "SADECE GERÇEKTEKİ RESİM TANIMA - Otomatik test YOK",
+                    color = androidx.compose.ui.graphics.Color.Yellow
                 )
                 
                 Text(
@@ -261,15 +264,14 @@ class ArCameraActivity : ComponentActivity() {
                     color = androidx.compose.ui.graphics.Color.Cyan
                 )
                 
-                Text(
-                    text = "OTOMATIK TEST: 5sn başlar, 8sn durur",
-                    color = androidx.compose.ui.graphics.Color.Magenta
-                )
-                
                 imagePosition?.let { pos ->
                     Text(
                         text = "Pozisyon: (${pos.x}, ${pos.y}) ${pos.width}x${pos.height}",
                         color = androidx.compose.ui.graphics.Color.Cyan
+                    )
+                    Text(
+                        text = "Video: $videoWidth x $videoHeight @ ($videoOffsetX, $videoOffsetY)",
+                        color = androidx.compose.ui.graphics.Color.Green
                     )
                 }
                 
@@ -310,14 +312,17 @@ class ArCameraActivity : ComponentActivity() {
                                 stopVideo()
                                 imagePosition = null
                             } else {
-                                // Test için zorla video başlat
-                                imagePosition = ImagePosition(100, 100, 300, 400, 0.9f)
-                                updateVideoPosition(imagePosition!!)
+                                // Manuel test - Kontrollü şekilde
+                                Log.d("ArCamera", "Manuel test butonu - RESİM TANIMA ZORLANIYOR")
+                                detectionConfidence = 0.9f
+                                val testPosition = ImagePosition(100, 100, 400, 300, 0.9f)
+                                imagePosition = testPosition
+                                updateVideoPosition(testPosition)
                                 startVideo()
                             }
                         }
                     ) {
-                        Text(if (isVideoPlaying) "Stop" else "Test")
+                        Text(if (isVideoPlaying) "Stop" else "Manuel Test")
                     }
                     
                     Button(
@@ -340,22 +345,7 @@ class ArCameraActivity : ComponentActivity() {
         isProcessingImage = true
         
         try {
-            // OTOMATIK TEST - Eğer resim tanıma çalışmıyorsa
-            val currentTime = System.currentTimeMillis()
-            if (currentTime % 5000 < 100 && !isVideoPlaying) {
-                Log.d("ArCamera", "OTOMATIK TEST: 5 saniye - Video başlatılıyor!")
-                CoroutineScope(Dispatchers.Main).launch {
-                    imagePosition = ImagePosition(100, 100, 300, 400, 0.8f)
-                    updateVideoPosition(imagePosition!!)
-                    startVideo()
-                }
-            } else if (currentTime % 8000 < 100 && isVideoPlaying) {
-                Log.d("ArCamera", "OTOMATIK TEST: 8 saniye - Video durduruluyor!")
-                CoroutineScope(Dispatchers.Main).launch {
-                    stopVideo()
-                    imagePosition = null
-                }
-            }
+            // OTOMATIK TEST SİSTEMİNİ KALDIRDIM - SADECE GERÇEKTENRESİM TANIMA
             
             if (targetBitmap != null) {
                 val bitmap = imageProxyToBitmap(imageProxy)
@@ -376,24 +366,20 @@ class ArCameraActivity : ComponentActivity() {
                         val bestConfidence = maxOf(simpleSimilarity, realPosition?.confidence ?: 0f)
                         detectionConfidence = bestConfidence
                         
-                        // Eşik %20'ye yükselttim - daha güvenilir
-                        if (bestConfidence > 0.2f && !isVideoPlaying) {
-                            Log.d("ArCamera", "GELIŞMIŞ TANIMA: Video başlatılıyor! Best confidence: $bestConfidence")
+                        // EŞİK YÜKSEK - %40! Gerçekten resim tanınmalı
+                        if (bestConfidence > 0.4f && !isVideoPlaying) {
+                            Log.d("ArCamera", "GÜÇLÜ TANIMA: Video başlatılıyor! Best confidence: $bestConfidence")
                             
-                            // Gerçek pozisyon varsa onu kullan, yoksa sabit pozisyon
-                            val finalPosition = realPosition ?: ImagePosition(
-                                x = bitmap.width / 4,
-                                y = bitmap.height / 4, 
-                                width = bitmap.width / 2,
-                                height = bitmap.height / 2,
-                                confidence = bestConfidence
-                            )
-                            
-                            imagePosition = finalPosition
-                            updateVideoPosition(finalPosition)
-                            startVideo()
-                        } else if (bestConfidence <= 0.15f && isVideoPlaying) {
-                            Log.d("ArCamera", "GELIŞMIŞ TANIMA: Video durduruluyor! Best confidence: $bestConfidence")
+                            // SADECE gerçek pozisyon varsa video başlat
+                            if (realPosition != null && realPosition.confidence > 0.3f) {
+                                imagePosition = realPosition
+                                updateVideoPosition(realPosition)
+                                startVideo()
+                            } else {
+                                Log.d("ArCamera", "Gerçek pozisyon bulunamadı, video başlatılmıyor")
+                            }
+                        } else if (bestConfidence <= 0.25f && isVideoPlaying) {
+                            Log.d("ArCamera", "GÜÇLÜ TANIMA: Video durduruluyor! Best confidence: $bestConfidence")
                             stopVideo()
                             imagePosition = null
                         }
@@ -510,7 +496,14 @@ class ArCameraActivity : ComponentActivity() {
             }
             
             Log.d("ArCamera", "Template matching sonucu: $bestMatch")
-            bestMatch
+            
+            // Sadece yeterince yüksek confidence varsa döndür
+            if (bestMatch != null && bestMatch.confidence > 0.3f) {
+                bestMatch
+            } else {
+                Log.d("ArCamera", "Template matching confidence çok düşük: ${bestMatch?.confidence}")
+                null
+            }
         } catch (e: Exception) {
             Log.e("ArCamera", "Position finding hatası", e)
             null
@@ -552,20 +545,46 @@ class ArCameraActivity : ComponentActivity() {
         }
     }
     
-    // Video pozisyonunu resim pozisyonuna göre ayarla - BÜYÜK BOYUT
+    // Video pozisyonunu resim pozisyonuna göre ayarla - TAM DOĞRU HESAPLAMA
     private fun updateVideoPosition(position: ImagePosition) {
-        // Ekran koordinatlarına dönüştür - Gerçek boyutlarda
-        val screenDensity = resources.displayMetrics.density
-        
-        // Video resmin TAM boyutunda olsun
-        videoOffsetX = (position.x / screenDensity / 2).dp
-        videoOffsetY = (position.y / screenDensity / 2).dp
-        videoScale = 1.5f // Biraz büyük olsun ki resmi tamamen kaplasın
-        
-        Log.d("ArCamera", "Video pozisyonu güncellendi:")
-        Log.d("ArCamera", "- Offset: ($videoOffsetX, $videoOffsetY)")
-        Log.d("ArCamera", "- Scale: $videoScale")
-        Log.d("ArCamera", "- Resim boyutu: ${position.width}x${position.height}")
+        try {
+            // Ekran bilgilerini al
+            val displayMetrics = resources.displayMetrics
+            val screenWidth = displayMetrics.widthPixels
+            val screenHeight = displayMetrics.heightPixels
+            val density = displayMetrics.density
+            
+            Log.d("ArCamera", "Ekran bilgileri: ${screenWidth}x${screenHeight}, density: $density")
+            Log.d("ArCamera", "Resim pozisyonu: ${position.x}, ${position.y}, ${position.width}x${position.height}")
+            
+            // Resim koordinatlarını ekran koordinatlarına dönüştür
+            val videoX = position.x.toFloat()
+            val videoY = position.y.toFloat()
+            val videoWidthPx = position.width.toFloat()
+            val videoHeightPx = position.height.toFloat()
+            
+            // DP'ye çevir - Compose için
+            videoOffsetX = (videoX / density).dp
+            videoOffsetY = (videoY / density).dp
+            videoWidth = (videoWidthPx / density).dp
+            videoHeight = (videoHeightPx / density).dp
+            
+            Log.d("ArCamera", "Video pozisyonu hesaplandı:")
+            Log.d("ArCamera", "- Offset: ($videoOffsetX, $videoOffsetY)")
+            Log.d("ArCamera", "- Boyut: $videoWidth x $videoHeight")
+            
+            // Video scale'i 1.0 yap - tam resim boyutunda
+            videoScale = 1.0f
+            
+        } catch (e: Exception) {
+            Log.e("ArCamera", "Video pozisyon hesaplama hatası", e)
+            // Fallback pozisyon
+            videoOffsetX = 50.dp
+            videoOffsetY = 100.dp
+            videoWidth = 200.dp
+            videoHeight = 150.dp
+            videoScale = 1.0f
+        }
     }
     
     private fun imageProxyToBitmap(imageProxy: ImageProxy): Bitmap? {
