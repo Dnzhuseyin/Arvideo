@@ -5,6 +5,14 @@
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+    
+    <!-- ARCore gereksinimler -->
+    <uses-feature 
+        android:name="android.hardware.camera.ar" 
+        android:required="true" />
+    <uses-feature 
+        android:name="android.hardware.camera" 
+        android:required="true" />
 
     <application
         android:allowBackup="true"
@@ -16,6 +24,12 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.Arvideo"
         tools:targetApi="31">
+        
+        <!-- ARCore meta-data -->
+        <meta-data 
+            android:name="com.google.ar.core" 
+            android:value="required" />
+            
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -35,14 +49,20 @@
             android:screenOrientation="portrait" />
             
         <activity
+            android:name=".SimpleVideoActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Arvideo" />
+            
+        <activity
             android:name=".VideoTestActivity"
             android:exported="false"
             android:theme="@style/Theme.Arvideo" />
             
         <activity
-            android:name=".SimpleVideoActivity"
+            android:name=".ARCoreActivity"
             android:exported="false"
-            android:theme="@style/Theme.Arvideo" />
+            android:theme="@style/Theme.Arvideo"
+            android:screenOrientation="portrait" />
     </application>
 
 </manifest>

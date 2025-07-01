@@ -22,106 +22,111 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             ArvideoTheme {
-                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    WelcomeScreen(
-                        modifier = Modifier.padding(innerPadding)
-                    )
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background
+                ) {
+                    MainScreen()
                 }
             }
         }
     }
-}
 
-@Composable
-fun WelcomeScreen(modifier: Modifier = Modifier) {
-    val context = LocalContext.current
-    
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(32.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        Text(
-            text = "AR Video Uygulaması",
-            style = MaterialTheme.typography.headlineLarge,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.padding(bottom = 16.dp)
-        )
-        
-        Text(
-            text = "Bu uygulama belirli bir fotoğrafı tanıyarak üzerine video oynatır.",
-            style = MaterialTheme.typography.bodyLarge,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.padding(bottom = 32.dp)
-        )
-        
-        Text(
-            text = "Kullanım:\n" +
-                    "1. 'AR Kamerayı Başlat' butonuna tıklayın\n" +
-                    "2. Hedef fotoğrafı kameraya gösterin\n" +
-                    "3. Uygulama fotoğrafı tanıyınca video oynatılacak",
-            style = MaterialTheme.typography.bodyMedium,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.padding(bottom = 32.dp)
-        )
-        
-        Button(
-            onClick = {
-                val intent = Intent(context, ArCameraActivity::class.java)
-                context.startActivity(intent)
-            },
+    @Composable
+    fun MainScreen() {
+        Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .height(56.dp)
+                .fillMaxSize()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
-                text = "AR Kamerayı Başlat",
-                style = MaterialTheme.typography.titleMedium
+                text = "AR Video Uygulaması",
+                style = MaterialTheme.typography.headlineMedium
             )
-        }
-        
-        Spacer(modifier = Modifier.height(16.dp))
-        
-        Button(
-            onClick = {
-                val intent = Intent(context, SimpleVideoActivity::class.java)
-                context.startActivity(intent)
-            },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(56.dp)
-        ) {
+            
+            Spacer(modifier = Modifier.height(32.dp))
+            
+            // Fırat Üniversitesi videosu için olan buton
+            Button(
+                onClick = {
+                    val intent = Intent(this@MainActivity, SimpleVideoActivity::class.java)
+                    startActivity(intent)
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Basit Video Test")
+            }
+            
+            Spacer(modifier = Modifier.height(16.dp))
+            
+            Button(
+                onClick = {
+                    val intent = Intent(this@MainActivity, VideoTestActivity::class.java)
+                    startActivity(intent)
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Video Dosyası Test")
+            }
+            
+            Spacer(modifier = Modifier.height(16.dp))
+            
+            Button(
+                onClick = {
+                    val intent = Intent(this@MainActivity, ArCameraActivity::class.java)
+                    startActivity(intent)
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Custom AR Kamera (Eski)")
+            }
+            
+            Spacer(modifier = Modifier.height(16.dp))
+            
+            // ARCore - Professional version
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer
+                )
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp)
+                ) {
+                    Text(
+                        text = "🚀 PROFESSIONAL ARCore",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    
+                    Text(
+                        text = "Google ARCore ile gerçek AR deneyimi",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    Button(
+                        onClick = {
+                            val intent = Intent(this@MainActivity, ARCoreActivity::class.java)
+                            startActivity(intent)
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("ARCore AR Kamera")
+                    }
+                }
+            }
+            
+            Spacer(modifier = Modifier.height(24.dp))
+            
             Text(
-                text = "Basit Video Test (Kamerasız)",
-                style = MaterialTheme.typography.titleMedium
+                text = "Fırat Üniversitesi plaketi ile video oynatılacak",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
-        
-        Spacer(modifier = Modifier.height(16.dp))
-        
-        Button(
-            onClick = {
-                val intent = Intent(context, VideoTestActivity::class.java)
-                context.startActivity(intent)
-            },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(56.dp)
-        ) {
-            Text(
-                text = "Video Test (Eski)",
-                style = MaterialTheme.typography.titleMedium
-            )
-        }
-        
-        Text(
-            text = "Not: İlk kullanımda kamera izni vermeniz gerekecek",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center
-        )
     }
 }
 
@@ -129,6 +134,6 @@ fun WelcomeScreen(modifier: Modifier = Modifier) {
 @Composable
 fun WelcomeScreenPreview() {
     ArvideoTheme {
-        WelcomeScreen()
+        MainScreen()
     }
 }
